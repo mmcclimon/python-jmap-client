@@ -1,7 +1,10 @@
 import json
 import requests
 
+import jmap_client as jc
 import jmap_client.response
+import jmap_client.result
+from jmap_client.exceptions import ConfigurationError
 
 
 class JMAPClient:
@@ -31,15 +34,21 @@ class JMAPClient:
     def update_session(self, auth_uri=None):
         auth_uri = auth_uri or self.authentication_uri
 
-        # XXX better exceptions
         if not auth_uri:
-            raise RuntimeError("tried to update client session with no auth_uri")
+            raise ConfigurationError("tried to update client session with no auth_uri")
 
         auth_res = self.ua.get(auth_uri)
         if auth_res.status_code != 200:
-            raise RuntimeError("auth failed")
+            return jc.result.Failure(
+                auth_res, ident="failed to retrieve client session"
+            )
 
-        self.configure_from_session(auth_res.json())
+        session = auth_res.json()
+        auth = jc.result.Auth(auth_res, session=session)
+
+        self.configure_from_session(session)
+
+        return auth
 
     def configure_from_session(self, session):
         # XXX JMAP::Tester does a bunch of other stuff here, largely I think
@@ -55,7 +64,7 @@ class JMAPClient:
 
     def request(self, input_req):
         if not self.api_uri:
-            raise RuntimeError("cannot request without an api_uri")
+            raise ConfigurationError("cannot request() without an api_uri")
 
         # we can take either an array of jmap triples, or a full request
         request = input_req
@@ -101,7 +110,7 @@ class JMAPClient:
         http_res = self.ua.post(self.api_uri, data=json.dumps(request))
 
         if not http_res.ok:
-            return jmap_client.result.Failure(http_res)
+            return jc.result.Failure(http_res)
 
         # result object
-        return jmap_client.response.from_http(http_res)
+        return jc.response.from_http(http_res)
