@@ -2,6 +2,7 @@ import json
 from warnings import warn
 
 from jmap_client.exceptions import SentenceError
+from jmap_client.result import Result
 
 
 def from_http(http_res):
@@ -10,7 +11,8 @@ def from_http(http_res):
     return Response(items=items, http_response=http_res, wrapper_properties=data)
 
 
-class Response:
+# a response is a successful Result
+class Response(Result):
     def __init__(self, **kwargs):
         self.items = kwargs["items"]
         self.http_response = kwargs["http_response"]
@@ -96,3 +98,90 @@ class Sentence:
 
     def as_pair(self):
         return [self.name, self.arguments]
+
+    def as_set(self):
+        if not self.name.endswith("/set"):
+            raise SentenceError(
+                "called .as_set() on a sentence named {}".format(self.name)
+            )
+
+        return SetSentence(
+            name=self.name, arguments=self.arguments, client_id=self.client_id
+        )
+
+
+class SetSentence(Sentence):
+    def as_set(self):
+        return self
+
+    @property
+    def new_state(self):
+        return self.arguments.get("newState")
+
+    @property
+    def old_state(self):
+        return self.arguments.get("oldState")
+
+    @property
+    def created(self):
+        return self.arguments.get("created")
+
+    def created_id(self, creation_id):
+        props = self.created.get("creation_id")
+        return props["id"] if props else None
+
+    @property
+    def created_creation_ids(self):
+        return list(self.created.keys())
+
+    @property
+    def created_ids(self):
+        return list(map(lambda c: c["id"], self.created.values()))
+
+    @property
+    def updated(self):
+        return self.arguments.get("updated", {})
+
+    @property
+    def updated_ids(self):
+        return list(self.updated.keys())
+
+    @property
+    def destroyed_ids(self):
+        return self.arguments.get("destroyed")
+
+    @property
+    def create_errors(self):
+        return self.arguments.get("notCreated", {})
+
+    @property
+    def update_errors(self):
+        return self.arguments.get("notUpdated", {})
+
+    @property
+    def destroy_errors(self):
+        return self.arguments.get("notDestroyed", {})
+
+    @property
+    def not_created_errors(self):
+        return list(self.created.keys())
+
+    @property
+    def not_updated_errors(self):
+        return list(self.updated.keys())
+
+    @property
+    def not_destroyed_errors(self):
+        return list(self.destroyed.keys())
+
+    # maybe: diagnostics here, but also maybe not
+    def assert_no_errors(self):
+        errors = 0
+        errors += len(self.create_errors)
+        errors += len(self.update_errors)
+        errors += len(self.destroy_errors)
+
+        if errors == 0:
+            return self
+
+        raise AssertionError("errors found in .assert_no_errors()")
