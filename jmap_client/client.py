@@ -2,7 +2,7 @@ import json
 import requests
 
 
-class JMAPTester:
+class JMAPClient:
     def __init__(self, api_uri, **kwargs):
         self.api_uri = api_uri
         self.authentication_uri = kwargs.get("authentication_uri")
@@ -26,7 +26,7 @@ class JMAPTester:
         self.accounts = None
         self.primary_accounts = None
 
-    def update_client_session(self, auth_uri=None):
+    def update_session(self, auth_uri=None):
         auth_uri = auth_uri or self.authentication_uri
 
         # XXX better exceptions
@@ -37,9 +37,9 @@ class JMAPTester:
         if auth_res.status_code != 200:
             raise RuntimeError("auth failed")
 
-        self.configure_from_client_session(auth_res.json())
+        self.configure_from_session(auth_res.json())
 
-    def configure_from_client_session(self, session):
+    def configure_from_session(self, session):
         # XXX JMAP::Tester does a bunch of other stuff here, largely I think
         # because it was written when authentication was still part of the
         # official spec. I will forgo most of that here.
