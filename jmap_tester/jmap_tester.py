@@ -10,9 +10,10 @@ class JMAPTester:
         self.upload_uri = kwargs.get("upload_uri")
 
         self.default_using = kwargs.get("default_using")
-        self.default_arguments = kwargs.get("default_arguments")
+        self.default_arguments = kwargs.get("default_arguments", {})
 
         self.ua = requests.Session()
+        self.ua.headers = {"Content-Type": "application/json"}
 
         # if we have a username and password, we'll use that to do basic auth
         username = kwargs.get("username")
@@ -49,3 +50,53 @@ class JMAPTester:
 
         self.accounts = session["accounts"]
         self.primary_accounts = session["primaryAccounts"]
+
+    def request(self, input_req):
+        if not self.api_uri:
+            raise RuntimeError("cannot request without an api_uri")
+
+        # we can take either an array of jmap triples, or a full request
+        request = input_req
+        if isinstance(input_req, list):
+            request = {"methodCalls": input_req}
+
+        default_args = self.default_arguments.copy()
+        seen = set()
+        cid_count = 1
+        suffixed = []
+
+        for call in request["methodCalls"]:
+            copy = call.copy()
+
+            # client ids are optional
+            if len(copy) == 2:
+                copy.append(None)
+
+            if copy[2]:
+                seen.add(copy[2])
+            else:
+                next_cid = "c{}".format(cid_count)
+                while next_cid in seen:
+                    cid_count += 1
+                    next_cid = "c{}".format(cid_count)
+                copy[2] = next_cid
+                seen.add(next_cid)
+
+            arg = {**self.default_arguments, **copy[1]}
+
+            # JMAP::Tester has a means to delete default arguments here, which
+            # I am omitting at the moment.
+
+            copy[1] = arg
+            suffixed.append(copy)
+
+        request["methodCalls"] = suffixed
+
+        if self.default_using and not request.get("using"):
+            request["using"] = self.default_using
+
+        # TODO: logging
+        post = self.ua.post(self.api_uri, data=json.dumps(request))
+
+        # result object
+        return post.json()
