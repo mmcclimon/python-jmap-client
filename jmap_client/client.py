@@ -1,6 +1,8 @@
 import json
 import requests
 
+import jmap_client.response
+
 
 class JMAPClient:
     def __init__(self, api_uri, **kwargs):
@@ -96,7 +98,10 @@ class JMAPClient:
             request["using"] = self.default_using
 
         # TODO: logging
-        post = self.ua.post(self.api_uri, data=json.dumps(request))
+        http_res = self.ua.post(self.api_uri, data=json.dumps(request))
+
+        if not http_res.ok:
+            return jmap_client.result.Failure(http_res)
 
         # result object
-        return post.json()
+        return jmap_client.response.from_http(http_res)
