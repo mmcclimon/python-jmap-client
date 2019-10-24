@@ -1,13 +1,16 @@
 import json
+import urllib.parse
 import requests
 
 import jmap_client as jc
 import jmap_client.response
 import jmap_client.result
-from jmap_client.exceptions import ConfigurationError
+from jmap_client.exceptions import ConfigurationError, DownloadError
 
 
 class JMAPClient:
+    _DL_DEFAULTS = {"name": "download"}
+
     def __init__(self, api_uri, **kwargs):
         self.api_uri = api_uri
         self.authentication_uri = kwargs.get("authentication_uri")
@@ -19,6 +22,7 @@ class JMAPClient:
 
         self.ua = requests.Session()
         self.ua.headers = {"Content-Type": "application/json"}
+        self.ua.timeout = 5
 
         # if we have a username and password, we'll use that to do basic auth
         username = kwargs.get("username")
@@ -114,3 +118,38 @@ class JMAPClient:
 
         # result object
         return jc.response.from_http(http_res)
+
+    def download(self, **kwargs):
+        uri = self.download_uri_for(**kwargs)
+
+        # This is useful if you need to, for example, sign the URLs
+        url_cb = kwargs.get("uri_callback")
+        if url_cb:
+            uri = url_cb(uri)
+
+        http_res = self.ua.get(uri)
+        if not http_res.ok:
+            return jc.result.Failure(http_res)
+
+        return jc.result.Download(http_res)
+
+    def download_uri_for(self, **kwargs):
+        dl_uri = self.download_uri
+        if not dl_uri:
+            raise ConfigurationError("tried to download with no download_uri")
+
+        for param in ["blobId", "accountId", "name", "type"]:
+            key = "{" + param + "}"
+            if key not in dl_uri:
+                continue
+
+            value = kwargs.get(param) or self._DL_DEFAULTS.get(param)
+            if not value:
+                raise DownloadError("missing template parameter {}".format(param))
+
+            if param == "name":
+                value = urllib.parse.quote(value)
+
+            dl_uri = dl_uri.replace(key, value)
+
+        return dl_uri
